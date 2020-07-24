@@ -1,0 +1,151 @@
+---
+title: "MNIST Project Report"
+author: "Eric Mestiza"
+date: "5/12/2019"
+---
+
+Note: Report begins below the R code output.
+
+```{r, echo=FALSE}
+knitr::opts_chunk$set(error = TRUE)
+```
+
+```{r, eval=TRUE, echo=FALSE}
+
+# Note: This code takes several minutes to run.
+
+# Install packages
+install.packages(c("dslabs", "caret", "matrixStats", "e1071", "rmarkdown","knitr"))
+
+# Load package and data
+library(dslabs)
+library(caret)
+library(matrixStats)
+library(e1071)
+library(rmarkdown)
+library(knitr)
+
+# MNIST Data
+mnist <- read_mnist()
+names(mnist)
+
+# Matrix column features 
+dim(mnist$train$images)
+
+# Vector class
+class(mnist$train$labels)
+
+# Table with digit labels
+table(mnist$train$labels)
+
+# Training dataset
+set.seed(123)
+index <- sample(nrow(mnist$train$images), 20000)
+x <- mnist$train$images[index,]
+y <- factor(mnist$train$labels[index])
+
+# Training subset dataset
+index <- sample(nrow(mnist$train$images), 2000)
+x_validation <- mnist$train$images[index,]
+y_validation <- factor(mnist$train$labels[index])
+
+# Preprocessing MNIST Data
+sds <- colSds(x)
+qplot(sds, bins = 256, color = I("black"))
+
+# Columns with near zero variance are removed
+nzv <- nearZeroVar(x)
+col_index <- setdiff(1:ncol(x), nzv)
+length(col_index)
+
+# Model Fitting for MNIST Data
+colnames(x) <- 1:ncol(mnist$train$images)
+colnames(x_validation) <- colnames(mnist$train$images)
+
+# Knn for training dataset
+control <- trainControl(method = "cv", number = 10, p = 0.9)
+train_knn <- train(x[ ,col_index], y, method = "knn", tuneGrid = data.frame(k = c(1,3,5,7)), trControl = control)
+plot(train_knn)
+
+# Fitting entire training dataset
+fit_knn <-  knn3(x[ ,col_index], y, k = 3) 
+y_hat_knn <- predict(fit_knn, x_validation[, col_index], type = "class")
+cm <- confusionMatrix(y_hat_knn, factor(y_validation))
+cm$overall["Accuracy"]  
+
+# Training dataset specificity and sensitivity output
+cm$byClass[, 1:2]
+
+# Knn for test dataset
+index <- sample(nrow(mnist$test$images), 2000)
+x_test <- mnist$test$images[index,]
+y_test <- factor(mnist$test$labels[index])
+colnames(x_test) <- colnames(mnist$test$images)
+
+fit_knn <-  knn3(x[ ,col_index], y, k = 3) 
+y_hat_knn <- predict(fit_knn, x_test[, col_index], type = "class")
+cm_test <- confusionMatrix(y_hat_knn, factor(y_test))
+cm_test$overall["Accuracy"]  
+
+# Test dataset specificity and sensitivity output
+cm_test$byClass[, 1:2]
+```
+
+
+I) Introduction
+
+The MNIST (Modified National Institute of Standards and Technology) dataset is a large dataset of handwritten digits that is used for training various image processing systems. The MNIST dataset is also a popular dataset used in machine learning competitions and will be used in this project. The goal of this project is to get highest accuracy possible in processing the images of digits from the MNIST dataset. To achieve this goal an algorithm will be developed using k-nearest neighbors (knn) algorithm to process the images. The k-nearest neighbors function is used for pattern recognition and is a non-parametric method used for classification or regression. A training dataset will be used to develop the algorithm and then the algorithm will be applied to the testing dataset. To determine the best model the accuracy parameter will be measured.  
+
+II) Methods and Analysis 
+
+The MNIST dataset is loaded using the dslabs package. The dataset includes two components, a training set and a test set. Each of these components includes a matrix with features in the columns. To access these features use the dim( ) function. It also includes a vector with the classes as integers. To see this use the class( ) function. A smaller subset of the training dataset is used so it can run on a small computer in a short amount of time. In this project 20,000 random rows from the training set and 2,000 random rows from the test set are sampled.
+
+An important step in machine learning is transforming predictors before running the machine learning algorithm. Another important step is removing predictors that are not useful. These steps are part of pre-processing. Examples of pre-processing include standardizing the predictors, transformation of predictors, removing predictors that are highly correlated with others, and removing predictors with very few non-unique values or close to zero variation. This project looks at the variability of the features. There are a large number of features with zero variability or almost zero variability. This code, sds <- colSds(x), can be used to compute the standard deviation of each column and then plot them in a histogram. The histogram is shown below.
+
+```{r, echo=FALSE}
+qplot(sds, bins = 256, color = I("black"))
+```
+
+This is expected, because there are parts of the image that rarely contain writing, very few dark pixels, so there's little variation and almost all the values are 0. The caret package includes a function that recommends features to be removed because of near zero variance. The following lines of code can be used: nzv <- nearZeroVar(x) and col_index <- setdiff(1:ncol(x), nzv). The columns that are removed are the yellow ones in the plot, by making an image of the matrix. After the columns are removed models can be fitted. Once the pre-processing is complete, then implementing k-nearest neighbors on the MNIST dataset can be done. First, column names are added to the feature matrices because this is a requirement of the caret package.
+
+For k-nearest neighbors, the first step is to optimize for the number of neighbors. Keep in mind that when running the algorithm, the distance between each observation in the test set and each observation in the training set will be computed. These are a lot of calculations and will therefore use k-fold cross-validation to improve speed. The caret package can be used to optimize the k-nearest neighbor algorithm. The following code,  control <- trainContol(method = “cv”, number = 10, p = 0.9) and train_knn <- train(x[ ,col_index], y, method = “knn”, tuneGrid = data.frame(k = c(1,3,5,7)), trControl = control), will find the model that maximizes the accuracy. The plot below shows which number of neighbors is optimal to use. In this case, $k$ = 3. To prevent overtraining $k$ = 1 is not used. 
+
+```{r, echo=FALSE}
+plot(train_knn)
+```
+
+Once optimizing the algorithm is done, then the entire dataset can be fitted. The code would look like this: fit_knn <-  knn3(x[ ,col_index], y, k = 3) . The accuracy is approximately 0.97. From the specificity and sensitivity output coming from the confusion matrix function, the number nine is the hardest to detect, and the most commonly incorrect predicted digit is five. The number nine has the lowest sensitivity and number five has the lowest specificity. This can be seen using this code: cm$byClass[, 1:2]. 
+
+The last step is to apply the algorithm that was optimized using the training set to test set. The knn3( ) function is used to fit the model for the test set. The accuracy is approximately 0.96.From the specificity and sensitivity output coming from the confusion matrix function, the number eight is the hardest to detect, and the most commonly incorrect predicted digit is one. The number eight has the lowest sensitivity and number one has the lowest specificity. This can be seen using this code: cm_test$byClass[, 1:2]. 
+
+III) Results
+
+In this section the results are shown. First, the accuracy of the training set is displayed. Second, the specificity and sensitivity output coming from the confusion matrix function for the training set is displayed.
+
+Training set accuracy 
+```{r, echo=TRUE}
+cm$overall["Accuracy"] 
+```
+
+Training set specificity and sensitivity output
+```{r, echo=TRUE}
+cm$byClass[, 1:2]
+```
+
+Third, the accuracy of the test set is displayed. Fourth, the specificity and sensitivity output coming from the confusion matrix function for the test set is displayed.
+
+Test set accuracy 
+```{r, echo=TRUE}
+cm_test$overall["Accuracy"]  
+```
+
+Test set specificity and sensitivity output
+```{r, echo=TRUE}
+cm_test$byClass[, 1:2]
+```
+
+The accuracy values are very high. In addition, the specificity and sensitivity output values are high overall as well. The k-nearest neighbors algorithm is better than logistic regression because the values are closer to the true conditional probability. 
+
+IV) Conclusion
+
+The goal of this project is getting the highest accuracy possible in processing the images of digits from the MNIST dataset using the k-nearest neighbors algorithm. A training dataset was used to develop the  k-nearest neighbors algorithm and then it was  applied to the test dataset. To reduce the time the algorithm takes to run k-fold cross-validation was used. In the k-nearest neighbors algorithm overtraining and oversmoothing is prevented by setting $k$ = 3. To determine the best model the accuracy parameter is measured. The approximate accuracy of 0.97 from the training set and 0.96 from the test set show that the k-nearest neighbors algorithm is very reliable for image processing. 
